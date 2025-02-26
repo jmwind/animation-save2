@@ -1,22 +1,48 @@
-// PngToMp4WebView.js
-import React, { useRef, useState, useEffect } from 'react';
-import { View, Button, Text, Platform, StyleSheet } from 'react-native';
+// DirectoryVideoEncoder.js
+import React, { useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { View, Button, Text, Platform, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
-import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
 
-const WebViewMp4Demo = () => {
-  const webViewRef = useRef(null);
+export type DirectoryVideoEncoderProps = {
+  directoryPath: string;
+  filePattern?: string;
+  fps?: number;
+};
+
+export type DirectoryVideoEncoderRef = {
+  startEncoding: () => Promise<void>;
+  loadFiles: () => Promise<void>;
+  getVideoUri: () => string | null;
+  shareVideo: () => Promise<void>;
+  getStatus: () => string;
+  getProgress: () => number;
+  getFileCount: () => number;
+};
+const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVideoEncoderProps>(({ directoryPath, filePattern = '.png', fps = 30 }, ref) => {
+  const webViewRef = useRef<WebView>(null);
   const [status, setStatus] = useState('Ready');
   const [progress, setProgress] = useState(0);
-  const [videoUri, setVideoUri] = useState(null);
-  const [selectedImages, setSelectedImages] = useState([]);
-  const [debugInfo, setDebugInfo] = useState([]);
+  const [videoUri, setVideoUri] = useState<string | null>(null);
+  const [fileUris, setFileUris] = useState<string[]>([]);
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const addDebugMessage = (message) => {
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    startEncoding: () => startEncoding(),
+    loadFiles: () => loadFilesFromDirectory(),
+    getVideoUri: () => videoUri,
+    shareVideo: () => shareVideo(),
+    getStatus: () => status,
+    getProgress: () => progress,
+    getFileCount: () => fileUris.length
+  }));
+
+  const addDebugMessage = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
     setDebugInfo(prev => [`[${timestamp}] ${message}`, ...prev.slice(0, 19)]); // Keep last 20 messages
     console.log(`[DEBUG] ${message}`);
@@ -32,8 +58,61 @@ const WebViewMp4Demo = () => {
     })();
   }, []);
 
+  // Load files from directory when directoryPath changes
+  useEffect(() => {
+    if (directoryPath) {
+      loadFilesFromDirectory();
+    }
+  }, [directoryPath]);
+
+  // Load files from the specified directory
+  const loadFilesFromDirectory = async () => {
+    try {
+      setIsLoading(true);
+      setStatus('Loading files...');
+      
+      // Check if directory exists
+      const dirInfo = await FileSystem.getInfoAsync(directoryPath);
+      if (!dirInfo.exists || !dirInfo.isDirectory) {
+        throw new Error(`Directory not found: ${directoryPath}`);
+      }
+      
+      // Read directory contents
+      const files = await FileSystem.readDirectoryAsync(directoryPath);
+      
+      // Filter files by pattern and sort them
+      const filteredFiles = files
+        .filter(filename => filename.endsWith(filePattern))
+        .sort((a, b) => {
+          // Try to extract numbers from filenames for natural sorting
+          const numA = parseInt(a.replace(/\D/g, ''));
+          const numB = parseInt(b.replace(/\D/g, ''));
+          return numA - numB;
+        });
+      
+      if (filteredFiles.length === 0) {
+        setStatus(`No ${filePattern} files found in directory`);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Create full paths
+      const uris = filteredFiles.map(filename => `${directoryPath}${filename}`);
+      setFileUris(uris);
+      setStatus(`Found ${uris.length} files`);
+      addDebugMessage(`Loaded ${uris.length} files from ${directoryPath}`);
+      
+    } catch (error: unknown) {
+      console.error('Error loading files:', error);
+      setStatus(`Error: ${error}`);
+      addDebugMessage(`Error loading files: ${error}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Handle messages from WebView
-  const handleMessage = async (event) => {
+  const handleMessage = async (event: { nativeEvent: { data: string } }) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       
@@ -84,98 +163,86 @@ const WebViewMp4Demo = () => {
       }
     } catch (error) {
       console.error('Error handling WebView message:', error);
-      addDebugMessage(`Error parsing message: ${error.message}`);
-    }
-  };
-
-  // Select PNG images
-  const selectImages = async () => {
-    try {
-      const result = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (result.granted) {
-        const pickerResult = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsMultipleSelection: true,
-          orderedSelection: true,
-          selectionLimit: 100,
-          quality: 1,
-        });
-
-        if (!pickerResult.canceled && pickerResult.assets.length > 0) {
-          // Accept all image types, not just PNGs
-          const selectedAssets = pickerResult.assets;
-          
-          if (selectedAssets.length === 0) {
-            setStatus('No images selected');
-            return;
-          }
-
-          setSelectedImages(selectedAssets);
-          setStatus(`${selectedAssets.length} images selected`);
-          
-          // Reset previous video
-          setVideoUri(null);
-        }
-      } else {
-        setStatus('Gallery permission denied');
-      }
-    } catch (error) {
-      console.error('Error selecting images:', error);
-      setStatus('Error selecting images');
+      addDebugMessage(`Error parsing message: ${error}`);
     }
   };
 
   // Start encoding process
   const startEncoding = async () => {
-    if (selectedImages.length === 0) {
-      setStatus('No images selected');
+    if (fileUris.length === 0) {
+      setStatus('No files loaded');
+      return;
+    }
+
+    if(!webViewRef.current) {
+      setStatus('No webview found');
       return;
     }
 
     setStatus('Preparing images...');
     setProgress(0);
+    setVideoUri(null);
     addDebugMessage('Starting encoding process');
     
     try {
-      // Process images one by one, converting to base64
-      const imageData = [];
-      
-      for (let i = 0; i < selectedImages.length; i++) {
-        addDebugMessage('Starting encoding process: image ' + i);
-        const uri = selectedImages[i].uri;
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        
-        // Determine image type from URI or use generic image type
-        const fileExtension = uri.split('.').pop().toLowerCase();
-        const mimeType = fileExtension === 'png' ? 'image/png' : 
-                         fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'image/jpeg' :
-                         fileExtension === 'gif' ? 'image/gif' : 'image/jpeg';
-        
-        imageData.push({
-          index: i,
-          data: `data:${mimeType};base64,${base64}`,
-        });
-        
-        setProgress((i + 1) / selectedImages.length);
-      }
-      
-      setStatus('Starting encoder...');
-      
-      // Send image data to WebView
+      // Initialize the encoder first
       webViewRef.current.postMessage(JSON.stringify({
-        type: 'encode',
-        images: imageData,
+        type: 'initEncoder',
         options: {
-          framerate: 30,
+          framerate: fps,
           quality: 0.95,
+          totalFrames: fileUris.length
         },
       }));
+
+      // Process images in batches
+      const BATCH_SIZE = 10; // Adjust based on your image sizes
+      
+      for (let batchStart = 0; batchStart < fileUris.length; batchStart += BATCH_SIZE) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, fileUris.length);
+        const imageData = [];
+        
+        for (let i = batchStart; i < batchEnd; i++) {
+          addDebugMessage(`Processing image ${i+1}/${fileUris.length}`);
+          const uri = fileUris[i];
+          const base64 = await FileSystem.readAsStringAsync(uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          
+          // Determine image type from URI
+          const fileExtension = uri?.split('.').pop()?.toLowerCase();
+          const mimeType = fileExtension === 'png' ? 'image/png' : 
+                           fileExtension === 'jpg' || fileExtension === 'jpeg' ? 'image/jpeg' :
+                           fileExtension === 'gif' ? 'image/gif' : 'image/jpeg';
+          
+          imageData.push({
+            index: i,
+            data: `data:${mimeType};base64,${base64}`,
+          });
+          
+          setProgress((i + 1) / fileUris.length * 0.5);
+        }
+        
+        // Send this batch to WebView
+        webViewRef.current.postMessage(JSON.stringify({
+          type: 'encodeBatch',
+          images: imageData,
+          batchIndex: batchStart / BATCH_SIZE,
+          totalBatches: Math.ceil(fileUris.length / BATCH_SIZE)
+        }));
+        
+        // Wait a moment to let the WebView process this batch
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // Signal that all batches have been sent
+      webViewRef.current.postMessage(JSON.stringify({
+        type: 'finalizeEncoding'
+      }));
+      
     } catch (error) {
       console.error('Error preparing images:', error);
-      setStatus(`Error: ${error.message}`);
+      setStatus(`Error: ${error}`);
     }
   };
 
@@ -190,7 +257,7 @@ const WebViewMp4Demo = () => {
       if (Platform.OS === 'android') {
         // On Android, save to media library
         const asset = await MediaLibrary.createAssetAsync(videoUri);
-        await MediaLibrary.createAlbumAsync('PngToMp4', asset, false);
+        await MediaLibrary.createAlbumAsync('DirectoryToMP4', asset, false);
         setStatus('Video saved to gallery');
       } else {
         // On iOS, use sharing
@@ -198,7 +265,7 @@ const WebViewMp4Demo = () => {
       }
     } catch (error) {
       console.error('Error sharing video:', error);
-      setStatus(`Error: ${error.message}`);
+      setStatus(`Error: ${error}`);
     }
   };
 
@@ -232,6 +299,7 @@ const WebViewMp4Demo = () => {
         this.mediaRecorder = null;
         this.recordedChunks = [];
         this.isRecording = false;
+        this.isInitialized = false;
       }
 
       // Send message to React Native
@@ -264,7 +332,9 @@ const WebViewMp4Demo = () => {
       }
 
       // Initialize encoder
-      async initialize(firstFrame) {
+      async initialize(firstFrameData) {
+        if (this.isInitialized) return;
+        
         return new Promise((resolve, reject) => {
           const img = new Image();
           img.onload = () => {
@@ -273,13 +343,17 @@ const WebViewMp4Demo = () => {
             this.canvas.height = this.options.height || img.height;
             
             this.log(\`Initialized encoder with dimensions: \${this.canvas.width}x\${this.canvas.height}\`);
+            this.isInitialized = true;
+            
+            // Start recording immediately after initialization
+            this.startRecording();
             resolve();
           };
           img.onerror = (e) => {
             this.handleError('Failed to load first frame', e);
             reject(e);
           };
-          img.src = firstFrame;
+          img.src = firstFrameData;
         });
       }
 
@@ -323,6 +397,11 @@ const WebViewMp4Demo = () => {
 
       // Add a frame to video
       async addFrame(frameData) {
+        if (!this.isInitialized) {
+          await this.initialize(frameData);
+          return; // The first frame is already drawn during initialization
+        }
+        
         if (!this.isRecording) {
           throw new Error('Recorder not initialized. Call startRecording() first.');
         }
@@ -385,7 +464,7 @@ const WebViewMp4Demo = () => {
           // Process each frame
           for (let i = 0; i < frames.length; i++) {
             this.updateStatus(\`Processing frame \${i+1}/\${frames.length}\`);
-            this.updateProgress(i / frames.length);
+            this.updateProgress(0.5 + (i / frames.length) * 0.5); // Second half of progress is encoding
             await this.addFrame(frames[i].data);
           }
           
@@ -405,14 +484,80 @@ const WebViewMp4Demo = () => {
       }
     }
 
+    // Create a global encoder instance
+    let encoder = null;
+
     // Message handler from React Native
     window.addEventListener('message', async (event) => {
       try {
         const data = JSON.parse(event.data);
         
-        if (data.type === 'encode') {
-          const encoder = new PNGToMP4Encoder(data.options);
-          await encoder.encodeFrames(data.images);
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'debug',
+          message: \`Received message type: \${data.type}\`
+        }));
+        
+        if (data.type === 'initEncoder') {
+          // Initialize the encoder
+          encoder = new PNGToMP4Encoder(data.options);
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'debug',
+            message: 'Encoder initialized, waiting for first frame'
+          }));
+        }
+        else if (data.type === 'encodeBatch') {
+          if (!encoder) {
+            throw new Error('Encoder not initialized. Call initEncoder first.');
+          }
+          
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'debug',
+            message: \`Processing batch \${data.batchIndex + 1}/\${data.totalBatches} with \${data.images.length} images\`
+          }));
+          
+          // Process each image in the batch
+          for (const image of data.images) {
+            await encoder.addFrame(image.data);
+            
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'progress',
+              progress: 0.5 + ((data.batchIndex * (data.images.length / data.totalBatches) + image.index) / (data.totalBatches * data.images.length)) * 0.5
+            }));
+          }
+          
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'debug',
+            message: \`Batch \${data.batchIndex + 1} processed\`
+          }));
+        }
+        else if (data.type === 'finalizeEncoding') {
+          if (!encoder) {
+            throw new Error('Encoder not initialized. Nothing to finalize.');
+          }
+          
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'debug',
+            message: 'Finalizing encoding...'
+          }));
+          
+          // Finalize the video
+          const videoData = await encoder.stopRecording();
+          
+          // Send video data back to React Native
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'video',
+            videoData
+          }));
+          
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'status',
+            message: 'Video encoding completed'
+          }));
+        }
+        else if (data.type === 'encode') {
+          // Original message type for backward compatibility
+          const tempEncoder = new PNGToMP4Encoder(data.options);
+          await tempEncoder.encodeFrames(data.images);
         }
       } catch (error) {
         console.error('Error processing message:', error);
@@ -485,7 +630,7 @@ const WebViewMp4Demo = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Image to MP4 Converter</Text>
+      <Text style={styles.title}>Directory to MP4 Converter</Text>
       
       <WebView
         ref={webViewRef}
@@ -499,17 +644,22 @@ const WebViewMp4Demo = () => {
       />
       
       <View style={styles.controls}>
-        <Button title="Select Images" onPress={selectImages} />
+        <Button 
+          title="Reload Files" 
+          onPress={loadFilesFromDirectory} 
+          disabled={isLoading}
+        />
         
         <Text style={styles.status}>
           Status: {status}
           {progress > 0 && progress < 1 ? ` (${Math.round(progress * 100)}%)` : ''}
         </Text>
         
-        {selectedImages.length > 0 && (
+        {fileUris.length > 0 && (
           <Button 
-            title={`Encode ${selectedImages.length} Images to Video`} 
+            title={`Encode ${fileUris.length} Files to Video`} 
             onPress={startEncoding}
+            disabled={isLoading}
           />
         )}
         
@@ -520,15 +670,38 @@ const WebViewMp4Demo = () => {
             color="#28a745"
           />
         )}
+        
+        <Button
+          title={showDebugPanel ? "Hide Debug Info" : "Show Debug Info"}
+          onPress={() => setShowDebugPanel(!showDebugPanel)}
+          color="#6c757d"
+        />
       </View>
+      
+      {showDebugPanel && (
+        <View style={styles.debugPanel}>
+          <Text style={styles.debugTitle}>Debug Information</Text>
+          {debugInfo.map((message, index) => (
+            <Text key={index} style={styles.debugMessage}>{message}</Text>
+          ))}
+        </View>
+      )}
+      
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#0000ff" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+    marginBottom: 100,
   },
   title: {
     fontSize: 20,
@@ -537,9 +710,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   webview: {
-    // display: 'none', // Hide WebView as it's just for processing
-    width: 100,
-    height: 100,
+    width: 1,
+    height: 1,
   },
   controls: {
     flex: 1,
@@ -552,22 +724,36 @@ const styles = StyleSheet.create({
     marginVertical: 16,
     fontSize: 16,
   },
+  debugPanel: {
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderTopWidth: 1,
+    borderTopColor: '#ddd',
+    maxHeight: 200,
+  },
+  debugTitle: {
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  debugMessage: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    marginBottom: 2,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: 'white',
+    marginTop: 10,
+  }
 });
 
-export default WebViewMp4Demo;
-
-// App.js usage example
-/*
-import React from 'react';
-import { SafeAreaView, StatusBar } from 'react-native';
-import PngToMp4WebView from './PngToMp4WebView';
-
-export default function App() {
-  return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <StatusBar />
-      <PngToMp4WebView />
-    </SafeAreaView>
-  );
-}
-*/
+export default DirectoryVideoEncoder;

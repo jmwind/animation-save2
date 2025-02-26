@@ -7,9 +7,9 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Text } from 'react-native';
-import MapViewExample from '@/components/MapExample';
 import MapViewExample2 from '@/components/MapExample2';
-export default function VideoScreen() {
+
+export default function VideoScreen() {  
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <MapViewExample2 />

@@ -5,7 +5,7 @@ import MapView, {Marker, Polyline} from 'react-native-maps';
 import { Text } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
-import DirectoryVideoEncoder from './DirectoryVideoEncoder';
+import DirectoryVideoEncoder, { DirectoryVideoEncoderRef } from './DirectoryVideoEncoder';
 import Animated, {
   useSharedValue,
   useAnimatedProps,
@@ -69,23 +69,23 @@ const cleanupTempDirectory = async () => {
 const AnimatedMarker = Animated.createAnimatedComponent(Marker);
 
 // Speed Pill component
-const SpeedPill = ({ speed }) => (
-  <View style={styles.speedPill}>
+const SpeedPill = ({ speed }: { speed: number }) => (
+  <View style={styles.speedPillContainer}>
     <Text style={styles.speedText}>{speed} knots</Text>
   </View>
 );
 
 const MapViewExample2 = () => {
-  const [frames, setFrames] = useState([]);
-  const [trailPoints, setTrailPoints] = useState([]);
+  const [frames, setFrames] = useState<{uri: string}[]>([]);
+  const [trailPoints, setTrailPoints] = useState<{latitude: number, longitude: number}[]>([]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [boatSpeed, setBoatSpeed] = useState(0);
-  const mapRef = useRef(null);
-  const animationTimeoutRef = useRef(null);
-  const speedIntervalRef = useRef(null);
-  const directoryVideoEncoderRef = useRef(null);
+  const mapRef = useRef<MapView>(null);
+  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const speedIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const directoryVideoEncoderRef = useRef<DirectoryVideoEncoderRef | null>(null);
   
   // Reanimated shared values
   const angle = useSharedValue(0);
@@ -99,14 +99,14 @@ const MapViewExample2 = () => {
   }, []);
 
   // Function to update trail points from the animated value
-  const updateTrailPoints = useCallback((newAngle) => {
+  const updateTrailPoints = useCallback((newAngle: number) => {
     const radians = (newAngle * Math.PI) / 180;
     const newPoint = {
       latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
       longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
     };
 
-    setTrailPoints(prev => {
+    setTrailPoints((prev: {latitude: number, longitude: number}[]) => {
       if (newAngle === 0 || prev.length === 0) {
         return [newPoint];
       }
@@ -139,7 +139,7 @@ const MapViewExample2 = () => {
   // Function to update boat speed randomly
   const updateBoatSpeed = useCallback(() => {
     // Generate a random speed between 5 and 15 knots
-    const newSpeed = (5 + Math.random() * 10).toFixed(1);
+    const newSpeed = (5 + Math.random() * 10);
     setBoatSpeed(newSpeed);
   }, []);
 
@@ -195,9 +195,8 @@ const MapViewExample2 = () => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Create video
-    directoryVideoEncoderRef.current.startEncoding().then(() => {
-      directoryVideoEncoderRef.current.shareVideo();
-    });
+    await directoryVideoEncoderRef.current?.startEncoding();
+    await directoryVideoEncoderRef.current?.shareVideo();    
   };
 
   // Cleanup on unmount
@@ -209,7 +208,7 @@ const MapViewExample2 = () => {
     };
   }, []);
 
-  const onCapture = useCallback(async uri => {
+  const onCapture = useCallback(async (uri: string) => {
     if (uri && isAnimating) {
       try {
         await ensureFramesDirectory();
@@ -269,7 +268,7 @@ const MapViewExample2 = () => {
       
       <ViewShot
         onCapture={onCapture}
-        captureMode={isAnimating ? 'continuous' : 'none'}
+        captureMode={isAnimating ? 'continuous' : 'update'}
         options={{format: 'png', quality: 0.9}}
         style={dimension}>
         <MapView
@@ -286,9 +285,13 @@ const MapViewExample2 = () => {
             strokeColor="#FF0000"
             strokeWidth={2}
           />
-          <AnimatedMarker
+          <AnimatedMarker            
             animatedProps={animatedMarkerProps}
             title="Boat"
+            coordinate={animatedMarkerProps.coordinate ?? {
+              latitude: CENTER_LATITUDE,
+              longitude: CENTER_LONGITUDE
+            }}
           >
             <Text style={{fontSize: 30}}>⛵</Text>
           </AnimatedMarker>
@@ -369,6 +372,10 @@ const styles = StyleSheet.create({
   },
   frameNumber: {
     marginTop: 5,
+    fontSize: 12,
+    color: '#666',
+  },
+  speedText: {
     fontSize: 12,
     color: '#666',
   }

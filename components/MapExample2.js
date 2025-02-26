@@ -4,9 +4,20 @@ import ViewShot from 'react-native-view-shot';
 import MapView, {Marker, Polyline} from 'react-native-maps';
 import { Text } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
-import WebViewVideoEncoder from './WebViewVideoEncoder';
 import * as FileSystem from 'expo-file-system';
 import DirectoryVideoEncoder from './DirectoryVideoEncoder';
+import Animated, {
+  useSharedValue,
+  useAnimatedProps,
+  withTiming,
+  withRepeat,
+  withSequence,
+  runOnJS,
+  Easing,
+  cancelAnimation,
+  useAnimatedReaction,
+} from 'react-native-reanimated';
+
 const dimension = {width: 300, height: 300};
 
 // Center coordinates
@@ -14,17 +25,8 @@ const CENTER_LATITUDE = 37.78825;
 const CENTER_LONGITUDE = -122.4324;
 const RADIUS = 0.005; // Size of the circle (in degrees)
 
-// Pre-calculate circle coordinates
-const CIRCLE_POINTS = Array.from({length: 360}, (_, i) => {
-  const radians = (i * Math.PI) / 180;
-  return {
-    latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
-    longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
-  };
-});
-
 // Create a directory for storing frames
-const FRAMES_DIRECTORY = `${FileSystem.cacheDirectory}map_frames/`;
+const FRAMES_DIRECTORY = `${FileSystem.cacheDirectory}map_frames_reanimated/`;
 
 // Ensure frames directory exists
 const ensureFramesDirectory = async () => {
@@ -63,97 +65,149 @@ const cleanupTempDirectory = async () => {
   }
 };
 
-const MapViewExample = () => {
+// Create an animated version of MapView.Marker
+const AnimatedMarker = Animated.createAnimatedComponent(Marker);
+
+// Speed Pill component
+const SpeedPill = ({ speed }) => (
+  <View style={styles.speedPill}>
+    <Text style={styles.speedText}>{speed} knots</Text>
+  </View>
+);
+
+const MapViewExample2 = () => {
   const [frames, setFrames] = useState([]);
-  const [angle, setAngle] = useState(0);
   const [trailPoints, setTrailPoints] = useState([]);
   const [isAnimating, setIsAnimating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
+  const [boatSpeed, setBoatSpeed] = useState(0);
   const mapRef = useRef(null);
-  const intervalRef = useRef(null);
   const animationTimeoutRef = useRef(null);
-  const [encoderVisible, setEncoderVisible] = useState(false);
-  const [encoderComponent, setEncoderComponent] = useState(null);
-  const [encodingProgress, setEncodingProgress] = useState(0);
+  const speedIntervalRef = useRef(null);
   const directoryVideoEncoderRef = useRef(null);
+  
+  // Reanimated shared values
+  const angle = useSharedValue(0);
+  
   // Request permission on component mount
   useEffect(() => {
     (async () => {
       const { status } = await MediaLibrary.requestPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
-  }, []); 
+  }, []);
+
+  // Function to update trail points from the animated value
+  const updateTrailPoints = useCallback((newAngle) => {
+    const radians = (newAngle * Math.PI) / 180;
+    const newPoint = {
+      latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
+      longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
+    };
+
+    setTrailPoints(prev => {
+      if (newAngle === 0 || prev.length === 0) {
+        return [newPoint];
+      }
+      return [...prev, newPoint];
+    });
+  }, []);
+
+  // Use animated reaction to update trail points when angle changes
+  useAnimatedReaction(
+    () => angle.value,
+    (currentAngle, previousAngle) => {
+      if (isAnimating) {
+        runOnJS(updateTrailPoints)(currentAngle);
+      }
+    },
+    [isAnimating, updateTrailPoints]
+  );
+
+  // Animated props for the marker
+  const animatedMarkerProps = useAnimatedProps(() => {
+    const radians = (angle.value * Math.PI) / 180;
+    return {
+      coordinate: {
+        latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
+        longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
+      }
+    };
+  });
+
+  // Function to update boat speed randomly
+  const updateBoatSpeed = useCallback(() => {
+    // Generate a random speed between 5 and 15 knots
+    const newSpeed = (5 + Math.random() * 10).toFixed(1);
+    setBoatSpeed(newSpeed);
+  }, []);
 
   const startAnimation = async () => {
-    // Clear any existing intervals and timeouts
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    // Clear any existing timeouts and intervals
     if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+    if (speedIntervalRef.current) clearInterval(speedIntervalRef.current);
     
     // Clean up frames directory before starting new animation
     await cleanupTempDirectory();
     await ensureFramesDirectory();
     
     // Reset states
-    setAngle(0);
+    angle.value = 0;
     setTrailPoints([]);
     setFrames([]);
     setIsAnimating(true);
+    
+    // Set initial boat speed
+    updateBoatSpeed();
+    
+    // Start interval to update boat speed every second
+    speedIntervalRef.current = setInterval(updateBoatSpeed, 1000);
 
-    // Start new animation
-    intervalRef.current = setInterval(() => {
-      setAngle((prevAngle) => {
-        const newAngle = (prevAngle + 1) % 360;
-        
-        // Calculate new boat position
-        const radians = (newAngle * Math.PI) / 180;
-        const newPoint = {
-          latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
-          longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
-        };
+    // Start Reanimated animation
+    // Animate from 0 to 360 degrees over 20 seconds
+    angle.value = withTiming(360, {
+      duration: 20000,
+      easing: Easing.linear,
+    }, (finished) => {
+      if (finished) {
+        runOnJS(finishAnimation)();
+      }
+    });
 
-        // Update trail points
-        setTrailPoints(prev => {
-          if (newAngle === 0) {
-            return [newPoint];
-          }
-          return [...prev, newPoint];
-        });
-
-        return newAngle;
-      });
-    }, 50);
-
-    // Stop animation after 15 seconds and create video
+    // Backup timeout to ensure animation stops
     animationTimeoutRef.current = setTimeout(async () => {
-      clearInterval(intervalRef.current);
-      setIsAnimating(false);
-      
-      // Add a small delay to ensure all frames are saved
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Create video
-      directoryVideoEncoderRef.current.startEncoding().then(() => {
-        directoryVideoEncoderRef.current.shareVideo();
-      });       
-    }, 20000);
+      finishAnimation();
+    }, 21000); // Slightly longer than animation duration
+  };
+
+  const finishAnimation = async () => {
+    // Cancel any ongoing animation
+    cancelAnimation(angle);
+    setIsAnimating(false);
+    
+    // Clear speed update interval
+    if (speedIntervalRef.current) {
+      clearInterval(speedIntervalRef.current);
+    }
+    
+    // Add a small delay to ensure all frames are saved
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Create video
+    directoryVideoEncoderRef.current.startEncoding().then(() => {
+      directoryVideoEncoderRef.current.shareVideo();
+    });
   };
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);      
+      if (animationTimeoutRef.current) clearTimeout(animationTimeoutRef.current);
+      if (speedIntervalRef.current) clearInterval(speedIntervalRef.current);
+      cancelAnimation(angle);
     };
   }, []);
-
-  const getBoatPosition = () => {
-    const radians = (angle * Math.PI) / 180;
-    return {
-      latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
-      longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
-    };
-  };
 
   const onCapture = useCallback(async uri => {
     if (uri && isAnimating) {
@@ -199,6 +253,7 @@ const MapViewExample = () => {
 
   return (
     <SafeAreaView>
+      <Text style={styles.title}>Reanimated Map Animation</Text>
       <Button 
         title={isAnimating ? "Animation Running..." : isProcessing ? "Processing..." : "Start Animation"} 
         onPress={startAnimation}
@@ -231,13 +286,16 @@ const MapViewExample = () => {
             strokeColor="#FF0000"
             strokeWidth={2}
           />
-          <Marker
-            coordinate={getBoatPosition()}
+          <AnimatedMarker
+            animatedProps={animatedMarkerProps}
             title="Boat"
           >
             <Text style={{fontSize: 30}}>⛵</Text>
-          </Marker>
+          </AnimatedMarker>
         </MapView>
+        <View style={styles.speedPillContainer}>
+          <SpeedPill speed={boatSpeed} />
+        </View>
       </ViewShot>
 
       <Text style={{color: 'black', marginTop: 10}}>Last 10 frames captured:</Text>
@@ -278,6 +336,13 @@ const MapViewExample = () => {
 };
 
 const styles = StyleSheet.create({
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginVertical: 10,
+    color: 'black',
+  },
   framesContainer: {
     paddingVertical: 10,
     paddingHorizontal: 5,
@@ -285,6 +350,15 @@ const styles = StyleSheet.create({
   frameWrapper: {
     marginHorizontal: 5,
     alignItems: 'center',
+  },
+  speedPillContainer: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 1000,
+    backgroundColor: 'white',
+    padding: 10,
+    borderRadius: 5,
   },
   frameImage: {
     width: 150,
@@ -300,8 +374,8 @@ const styles = StyleSheet.create({
   }
 });
 
-MapViewExample.navigationOptions = {
-  title: 'react-native-maps',
+MapViewExample2.navigationOptions = {
+  title: 'Reanimated Map Animation',
 };
 
-export default MapViewExample;
+export default MapViewExample2; 

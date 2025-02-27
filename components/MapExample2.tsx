@@ -75,6 +75,10 @@ const Watermark = () => (
   </View>
 );
 
+// Add zoom level constants
+const ZOOMED_IN_DELTA = 0.002; // Close zoom for boat focus
+const ZOOMED_OUT_DELTA = 0.0421; // Far zoom to see whole track
+
 const MapViewExample2 = () => {
   const [frames, setFrames] = useState<{uri: string}[]>([]);
   const [trailPoints, setTrailPoints] = useState<{latitude: number, longitude: number}[]>([]);
@@ -107,6 +111,9 @@ const MapViewExample2 = () => {
   // Add to component state
   const [selectedBoat, setSelectedBoat] = useState('⛵');
   const [boatSize, setBoatSize] = useState(64);
+  
+  // Add shared value for camera animation
+  const cameraProgress = useSharedValue(0);
   
   // Request permission on component mount
   useEffect(() => {
@@ -155,10 +162,43 @@ const MapViewExample2 = () => {
     [isAnimating, updateTrailPoints]
   );
 
-  // Animated props for the marker
+  // Handle camera animations separately from the marker animation
+  useEffect(() => {
+    if (isAnimating) {
+      // Start zoomed in
+      mapRef.current?.animateToRegion({
+        latitude: CENTER_LATITUDE,
+        longitude: CENTER_LONGITUDE,
+        latitudeDelta: ZOOMED_IN_DELTA,
+        longitudeDelta: ZOOMED_IN_DELTA * (dimensions[aspectRatio].width / dimensions[aspectRatio].height),
+      }, 1000);
+
+      // Set up interval to update camera
+      const cameraInterval = setInterval(() => {
+        const progress = angle.value / 360;
+        const zoomProgress = Math.sin(progress * Math.PI);
+        const latDelta = ZOOMED_IN_DELTA + (ZOOMED_OUT_DELTA - ZOOMED_IN_DELTA) * zoomProgress;
+        const lngDelta = latDelta * (dimensions[aspectRatio].width / dimensions[aspectRatio].height);
+
+        const coordinate = calculateCoordinates(angle.value, true);
+        
+        mapRef.current?.animateToRegion({
+          latitude: coordinate.latitude,
+          longitude: coordinate.longitude,
+          latitudeDelta: latDelta,
+          longitudeDelta: lngDelta,
+        }, 100);
+      }, 100); // Update every 100ms
+
+      return () => {
+        clearInterval(cameraInterval);
+      };
+    }
+  }, [isAnimating, aspectRatio]);
+
+  // Keep the existing animatedMarkerProps without camera logic
   const animatedMarkerProps = useAnimatedProps(() => {
     const coordinate = calculateCoordinates(angle.value, true);
-    
     return {
       coordinate,
       transform: [{

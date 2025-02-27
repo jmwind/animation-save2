@@ -193,8 +193,7 @@ const MapViewExample2 = () => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Create video    
-    await directoryVideoEncoderRef.current?.startEncoding();
-    await directoryVideoEncoderRef.current?.shareVideo();    
+    await directoryVideoEncoderRef.current?.startEncoding();    
   };
 
   // Cleanup on unmount
@@ -225,24 +224,17 @@ const MapViewExample2 = () => {
         });
         
         const fileInfo = await FileSystem.getInfoAsync(newUri);
-        if(fileInfo.exists) {
-          //console.log('file saved', newUri, fileInfo);
-          // Only update frames state after successful save
+        if(fileInfo.exists) {          
           setFrames(prev => [...prev, {uri: newUri}]);
         } else {
           console.error('Error saving frame: File does not exist after write');
         }
       } catch (error) {
-        console.error('Error saving frame:', error);
+        //console.error('Error saving frame:', error);
+        // we can skip this error and just continue on the next frame
       }
     }
-  }, [isAnimating]);
-
-  // Get the last 10 frames for display
-  const getLastTenFrames = useCallback(() => {
-    if (frames.length === 0) return [];
-    return frames.slice(Math.max(0, frames.length - 10));
-  }, [frames]);  
+  }, [isAnimating]);  
 
   return (
     <SafeAreaView style={{flex: 1, gap: 16}}>      

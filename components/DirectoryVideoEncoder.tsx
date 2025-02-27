@@ -13,8 +13,7 @@ export type DirectoryVideoEncoderProps = {
 };
 
 export type DirectoryVideoEncoderRef = {
-  startEncoding: () => Promise<void>;
-  loadFiles: () => Promise<void>;
+  startEncoding: () => Promise<void>;  
   getVideoUri: () => string | null;
   shareVideo: () => Promise<void>;
   getStatus: () => string;
@@ -33,8 +32,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
 
   // Expose methods to parent component via ref
   useImperativeHandle(ref, () => ({
-    startEncoding: () => startEncoding(),
-    loadFiles: () => loadFilesFromDirectory(),
+    startEncoding: async () => await startEncoding(),    
     getVideoUri: () => videoUri,
     shareVideo: () => shareVideo(),
     getStatus: () => status,
@@ -57,13 +55,6 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
       }
     })();
   }, []);
-
-  // Load files from directory when directoryPath changes
-  useEffect(() => {
-    if (directoryPath) {
-      loadFilesFromDirectory();
-    }
-  }, [directoryPath]);
 
   // Load files from the specified directory
   const loadFilesFromDirectory = async () => {
@@ -166,7 +157,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
   };
 
   // Start encoding process
-  const startEncoding = async () => {
+  const startEncoding = async () => {   
     await loadFilesFromDirectory();
     if (fileUris.length === 0) {
       setStatus('No files loaded');
@@ -194,6 +185,8 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
         },
       }));
 
+      await new Promise(resolve => setTimeout(resolve, 250));
+
       // Process images in batches
       const BATCH_SIZE = 10; // Adjust based on your image sizes
       
@@ -216,9 +209,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
           imageData.push({
             index: i,
             data: `data:${mimeType};base64,${base64}`,
-          });
-          
-          setProgress((i + 1) / fileUris.length * 0.5);
+          });                    
         }
         
         // Send this batch to WebView
@@ -627,9 +618,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
   `;
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Directory to MP4 Converter</Text>
-      
+    <View style={styles.container}>            
       <WebView
         ref={webViewRef}
         originWhitelist={['*']}
@@ -651,15 +640,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
         <Text style={styles.status}>
           Status: {status}
           {progress > 0 && progress < 1 ? ` (${Math.round(progress * 100)}%)` : ''}
-        </Text>
-        
-        {fileUris.length > 0 && (
-          <Button 
-            title={`Encode ${fileUris.length} Files to Video`} 
-            onPress={startEncoding}
-            disabled={isLoading}
-          />
-        )}
+        </Text>            
         
         {videoUri && (
           <Button 
@@ -669,28 +650,10 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
           />
         )}
         
-        <Button
-          title={showDebugPanel ? "Hide Debug Info" : "Show Debug Info"}
-          onPress={() => setShowDebugPanel(!showDebugPanel)}
-          color="#6c757d"
-        />
+        
       </View>
       
-      {showDebugPanel && (
-        <View style={styles.debugPanel}>
-          <Text style={styles.debugTitle}>Debug Information</Text>
-          {debugInfo.map((message, index) => (
-            <Text key={index} style={styles.debugMessage}>{message}</Text>
-          ))}
-        </View>
-      )}
       
-      {isLoading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#0000ff" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      )}
     </View>
   );
 });

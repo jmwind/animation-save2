@@ -618,25 +618,9 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
   `;
 
   return (
-    <View style={styles.container}>            
-      <WebView
-        ref={webViewRef}
-        originWhitelist={['*']}
-        source={{ html: htmlContent }}
-        onMessage={handleMessage}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        startInLoadingState={true}
-        style={styles.webview}
-      />
-      
-      <View style={styles.controls}>
-        <Button 
-          title="Reload Files" 
-          onPress={loadFilesFromDirectory} 
-          disabled={isLoading}
-        />
-        
+    <>
+    <View style={styles.container}>                       
+      <View style={styles.controls}>                
         <Text style={styles.status}>
           Status: {status}
           {progress > 0 && progress < 1 ? ` (${Math.round(progress * 100)}%)` : ''}
@@ -648,13 +632,20 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
             onPress={shareVideo} 
             color="#28a745"
           />
-        )}
-        
-        
-      </View>
-      
-      
+        )}                
+      </View>            
     </View>
+     <WebView
+     ref={webViewRef}
+     originWhitelist={['*']}
+     source={{ html: htmlContent }}
+     onMessage={handleMessage}
+     javaScriptEnabled={true}
+     domStorageEnabled={true}
+     startInLoadingState={true}
+     style={styles.webview}
+   />
+   </>
   );
 });
 
@@ -673,6 +664,9 @@ const styles = StyleSheet.create({
   webview: {
     width: 1,
     height: 1,
+    position: 'absolute',
+    left: -9999,  // Move offscreen
+    opacity: 0,   // Make invisible
   },
   controls: {
     flex: 1,

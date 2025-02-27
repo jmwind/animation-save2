@@ -117,7 +117,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
       const data = JSON.parse(event.nativeEvent.data);
       
       // Add debug info for all messages
-      addDebugMessage(`Received message: ${data.type}`);
+      //addDebugMessage(`Received message: ${data.type}`);
       
       switch (data.type) {
         case 'log':
@@ -126,8 +126,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
           break;
           
         case 'status':
-          setStatus(data.message);
-          addDebugMessage(`Status: ${data.message}`);
+          setStatus(data.message);          
           break;
           
         case 'progress':
@@ -146,8 +145,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
           });
           
           setVideoUri(fileName);
-          setStatus('Video ready');
-          addDebugMessage(`Video saved to: ${fileName}`);
+          setStatus('Video ready');          
           break;
           
         case 'error':
@@ -203,8 +201,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
         const batchEnd = Math.min(batchStart + BATCH_SIZE, fileUris.length);
         const imageData = [];
         
-        for (let i = batchStart; i < batchEnd; i++) {
-          addDebugMessage(`Processing image ${i+1}/${fileUris.length}`);
+        for (let i = batchStart; i < batchEnd; i++) {          
           const uri = fileUris[i];
           const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,

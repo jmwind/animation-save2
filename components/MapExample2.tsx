@@ -37,23 +37,6 @@ const ensureFramesDirectory = async () => {
   }
 };
 
-const listFramesDirectory = async () => {
-  try {
-    const dirInfo = await FileSystem.getInfoAsync(FRAMES_DIRECTORY);
-    if (!dirInfo.exists) {
-      console.log('Frames directory does not exist');
-      return [];
-    }
-    
-    const files = await FileSystem.readDirectoryAsync(FRAMES_DIRECTORY);
-    console.log(`Found ${files.length} files in frames directory:`, files);
-    return files;
-  } catch (error) {
-    console.error('Error listing frames directory:', error);
-    return [];
-  }
-};
-
 // Clean up frames directory
 const cleanupTempDirectory = async () => {
   try {
@@ -181,7 +164,7 @@ const MapViewExample2 = () => {
     // Start Reanimated animation
     // Animate from 0 to 360 degrees over 20 seconds
     angle.value = withTiming(360, {
-      duration: 20000,
+      duration: 15000,
       easing: Easing.linear,
     }, (finished) => {
       if (finished) {
@@ -192,7 +175,7 @@ const MapViewExample2 = () => {
     // Backup timeout to ensure animation stops
     animationTimeoutRef.current = setTimeout(async () => {
       finishAnimation();
-    }, 21000); // Slightly longer than animation duration
+    }, 16000); // Slightly longer than animation duration
   };
 
   const finishAnimation = async () => {
@@ -243,7 +226,7 @@ const MapViewExample2 = () => {
         
         const fileInfo = await FileSystem.getInfoAsync(newUri);
         if(fileInfo.exists) {
-          console.log('file saved', newUri, fileInfo);
+          //console.log('file saved', newUri, fileInfo);
           // Only update frames state after successful save
           setFrames(prev => [...prev, {uri: newUri}]);
         } else {
@@ -259,14 +242,10 @@ const MapViewExample2 = () => {
   const getLastTenFrames = useCallback(() => {
     if (frames.length === 0) return [];
     return frames.slice(Math.max(0, frames.length - 10));
-  }, [frames]);
-
-  useEffect(() => {
-    console.log('frames', frames.length);
-  }, [frames]);
+  }, [frames]);  
 
   return (
-    <SafeAreaView style={{flex: 1}}>      
+    <SafeAreaView style={{flex: 1, gap: 16}}>      
       <Button 
         title={isAnimating ? "Animation Running..." : isProcessing ? "Processing..." : "Start Animation"} 
         onPress={startAnimation}
@@ -324,21 +303,7 @@ const MapViewExample2 = () => {
           />
           <Text style={styles.frameNumber}>Frame: {frames.length}</Text>
         </View>
-      )}        
-            
-
-      <Button 
-        title="Debug: Check Files" 
-        onPress={async () => {
-          const files = await listFramesDirectory();
-          Alert.alert(
-            'Directory Contents', 
-            `Found ${files.length} files in ${FRAMES_DIRECTORY}`
-          );
-        }}
-        disabled={isAnimating}
-      />
-
+      )}                          
       <DirectoryVideoEncoder ref={directoryVideoEncoderRef} directoryPath={FRAMES_DIRECTORY} filePattern=".png" fps={30} />
     </SafeAreaView>
   );

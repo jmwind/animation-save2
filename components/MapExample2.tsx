@@ -351,6 +351,12 @@ const MapViewExample2 = () => {
       }
     }
   }, [isAnimating]);  
+  
+  const onMapReady = useCallback(() => {
+    if (mapRef.current) {
+      mapRef.current.setCamera({ pitch: 60 });
+    }
+  }, []);
 
   // Add aspect ratio selector component
   const AspectRatioSelector = () => (
@@ -419,6 +425,7 @@ const MapViewExample2 = () => {
           style={dimensions[aspectRatio]}>
           <MapView
             ref={mapRef}
+            onMapReady={onMapReady}
             initialRegion={{
               latitude: CENTER_LATITUDE,
               longitude: CENTER_LONGITUDE,

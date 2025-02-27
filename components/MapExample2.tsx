@@ -1,5 +1,5 @@
 import React, {useState, useCallback, useEffect, useRef, useMemo} from 'react';
-import {SafeAreaView, Image, Button, Alert, ActivityIndicator, View, ScrollView, StyleSheet, Platform} from 'react-native';
+import {SafeAreaView, Image, Button, Alert, ActivityIndicator, View, ScrollView, StyleSheet, Platform, Pressable, Dimensions} from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import MapView, {Marker, Polyline} from 'react-native-maps';
 import { Text } from 'react-native';
@@ -18,6 +18,8 @@ import Animated, {
   useAnimatedReaction,
 } from 'react-native-reanimated';
 import * as Sharing from 'expo-sharing';
+import type { AspectRatio } from './DirectoryVideoEncoder';
+import Slider from '@react-native-community/slider';
 
 const dimension = {width: 300, height: 300};
 
@@ -56,8 +58,20 @@ const AnimatedMarker = Animated.createAnimatedComponent(Marker);
 
 // Speed Pill component
 const SpeedPill = ({ speed }: { speed: number }) => (
-  <View style={styles.speedPillContainer}>
-    <Text style={styles.speedText}>{speed.toFixed(1)} knots</Text>
+  <View style={[styles.speedPillContainer, { flexDirection: 'row', gap: 4, backgroundColor: 'rgba(0, 0, 0, 0.3)' }]}>
+    <Text style={[styles.speedText, { color: 'white' }]}>{speed.toFixed(1)} knots</Text>
+    <Text style={[styles.speedText, { color: 'white' }]}>{"\u00B7"} 56.3nm</Text>
+    <Text style={[styles.speedText, { color: 'white' }]}>{"\u00B7"} SeaPeople</Text>
+  </View>
+);
+
+// Add boat options constant
+const BOAT_OPTIONS = ['⛵', '🚢', '🛥️', '🚤', '⛴️', '🛳️', '🐋', '🐬', '🦈'];
+
+// Add Watermark component
+const Watermark = () => (
+  <View style={styles.watermarkContainer}>
+    <Text style={styles.watermarkText}>SeaPeople</Text>
   </View>
 );
 
@@ -79,6 +93,20 @@ const MapViewExample2 = () => {
   const progressPercentage = useMemo(() => {
     return progress > 0 && progress < 1 ? ` (${Math.round(progress * 100)}%)` : ''
   }, [progress]);
+  
+  // Add state for aspect ratio
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('square');
+  
+  // Add dimensions based on aspect ratio
+  const dimensions = {
+    square: { width: 300, height: 300 },
+    landscape: { width: 400, height: 225 },
+    portrait: { width: 325, height: 500 }
+  };
+  
+  // Add to component state
+  const [selectedBoat, setSelectedBoat] = useState('⛵');
+  const [boatSize, setBoatSize] = useState(64);
   
   // Request permission on component mount
   useEffect(() => {
@@ -269,47 +297,101 @@ const MapViewExample2 = () => {
     }
   }, [isAnimating]);  
 
-  return (
-    <SafeAreaView style={{flex: 1, gap: 16}}>      
-      <Button 
-        title={isAnimating || isProcessing ? "Animation Running..." : "Start Animation"} 
-        onPress={startAnimation}
-        disabled={isAnimating || isProcessing}
-      />            
-      
-      <ViewShot
-        onCapture={onCapture}
-        captureMode={isAnimating ? 'continuous' : 'update'}
-        options={{format: 'png', quality: 0.9}}
-        style={dimension}>
-        <MapView
-          ref={mapRef}
-          initialRegion={{
-            latitude: CENTER_LATITUDE,
-            longitude: CENTER_LONGITUDE,
-            latitudeDelta: 0.0922,
-            longitudeDelta: 0.0421,
-          }}
-          style={dimension}>
-          <Polyline
-            coordinates={trailPoints}
-            strokeColor="#FF0000"
-            strokeWidth={5}
-          />
-          <AnimatedMarker            
-            animatedProps={animatedMarkerProps}
-            title="Boat"
-            coordinate={animatedMarkerProps.coordinate ?? {
-              latitude: CENTER_LATITUDE,
-              longitude: CENTER_LONGITUDE
-            }}
+  // Add aspect ratio selector component
+  const AspectRatioSelector = () => (
+    <View style={styles.aspectRatioContainer}>
+      {(['square', 'landscape', 'portrait'] as AspectRatio[]).map((ratio) => (
+        <Pressable
+          key={ratio}
+          style={[
+            styles.aspectRatioButton,
+            aspectRatio === ratio && styles.aspectRatioButtonSelected
+          ]}
+          onPress={() => setAspectRatio(ratio)}
+        >
+          <Text style={[
+            styles.aspectRatioText,
+            aspectRatio === ratio && styles.aspectRatioTextSelected
+          ]}>
+            {ratio.charAt(0).toUpperCase() + ratio.slice(1)}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  // Add boat selector component
+  const BoatSelector = () => (
+    <View style={styles.boatSelectorContainer}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.boatOptionsContainer}
+      >
+        {BOAT_OPTIONS.map((boat) => (
+          <Pressable
+            key={boat}
+            style={[
+              styles.boatOption,
+              selectedBoat === boat && styles.boatOptionSelected
+            ]}
+            onPress={() => setSelectedBoat(boat)}
           >
-            <Text style={{fontSize: 64}}>⛵</Text>
-          </AnimatedMarker>
-        </MapView>
-        
-        <SpeedPill speed={boatSpeed} />        
-      </ViewShot>      
+            <Text style={styles.boatEmoji}>{boat}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>     
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={styles.safeArea}>      
+      <View style={styles.controlsContainer}>
+        <Button 
+          title={isAnimating || isProcessing ? "Animation Running..." : "Start Animation"} 
+          onPress={startAnimation}
+          disabled={isAnimating || isProcessing}
+        />        
+        <AspectRatioSelector />
+        <BoatSelector />
+      </View>
+            
+      <View style={styles.viewShotContainer}>
+        <ViewShot
+          onCapture={onCapture}
+          captureMode={isAnimating ? 'continuous' : 'update'}
+          options={{format: 'png', quality: 0.9}}
+          style={dimensions[aspectRatio]}>
+          <MapView
+            ref={mapRef}
+            initialRegion={{
+              latitude: CENTER_LATITUDE,
+              longitude: CENTER_LONGITUDE,
+              latitudeDelta: 0.0922,
+              longitudeDelta: 0.0421,              
+            }}
+            style={dimensions[aspectRatio]}>
+            <Polyline
+              coordinates={trailPoints}
+              strokeColor="#FF0000"
+              strokeWidth={5}
+            />
+            <AnimatedMarker            
+              animatedProps={animatedMarkerProps}
+              title="Boat"
+              coordinate={animatedMarkerProps.coordinate ?? {
+                latitude: CENTER_LATITUDE,
+                longitude: CENTER_LONGITUDE
+              }}
+            >
+              <Text style={{fontSize: boatSize}}>{selectedBoat}</Text>
+            </AnimatedMarker>
+          </MapView>
+          
+          <SpeedPill speed={boatSpeed} />
+          <Watermark />
+        </ViewShot>
+      </View>
       
       
       {isAnimating && frames.length > 0 && (
@@ -333,8 +415,9 @@ const MapViewExample2 = () => {
         directoryPath={FRAMES_DIRECTORY} 
         filePattern=".png" 
         fps={30} 
-        onProgress={setProgress} 
+        onProgress={setProgress}
         onComplete={shareVideo}
+        aspectRatio={aspectRatio}
       />
     </SafeAreaView>
   );
@@ -378,7 +461,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   speedText: {
-    fontSize: 12,
+    fontSize: 16,
     color: '#666',
   },
   overlayContainer: {    
@@ -386,7 +469,106 @@ const styles = StyleSheet.create({
     zIndex: 1000,    
     padding: 10,
     borderRadius: 5,
-  }
+  },
+  aspectRatioContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+  },
+  aspectRatioButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  aspectRatioButtonSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  aspectRatioText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  aspectRatioTextSelected: {
+    color: 'white',
+  },
+  viewShotContainer: { 
+    flex: 1,
+    marginTop: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  boatSelectorContainer: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  boatOptionsContainer: {
+    paddingVertical: 8,
+    gap: 8,
+  },
+  boatOption: {
+    padding: 8,
+    borderRadius: 8,
+    height: 60,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    marginHorizontal: 4,
+  },
+  boatOptionSelected: {
+    borderColor: '#007AFF',
+    backgroundColor: 'rgba(0, 122, 255, 0.1)',
+  },
+  boatEmoji: {
+    fontSize: 32,
+  },
+  sizeSliderContainer: {
+    marginTop: 8,
+  },
+  sizeLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  safeArea: {
+    flex: 1,
+  },
+  controlsContainer: {
+    height: 300,
+    gap: 16,
+    paddingTop: 8,    
+  },
+  watermarkContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ rotate: '45deg' }],
+    zIndex: 500,
+    pointerEvents: 'none',
+  },
+  watermarkText: {
+    fontSize: 52,
+    fontWeight: 'bold',
+    color: 'rgba(255, 255, 255, 0.2)',
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: 4,    
+    fontFamily: Platform.select({
+      ios: 'Helvetica Neue',
+      android: 'sans-serif-medium',
+    }),
+  },
 });
 
 MapViewExample2.navigationOptions = {

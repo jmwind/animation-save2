@@ -4,19 +4,23 @@ import { View, Button, Text, Platform, StyleSheet, Alert, ActivityIndicator } fr
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
 
+// Add new type for aspect ratios
+export type AspectRatio = 'square' | 'landscape' | 'portrait';
+
 export type DirectoryVideoEncoderProps = {
   directoryPath: string;
   filePattern?: string;
   fps?: number;
   onProgress?: (progress: number) => void;
   onComplete?: (videoUri: string) => void;
+  aspectRatio?: AspectRatio; // Add new prop
 };
 
 export type DirectoryVideoEncoderRef = {
   startEncoding: () => Promise<void>;  
   getVideoUri: () => string | null;  
 };
-const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVideoEncoderProps>(({ directoryPath, filePattern = '.png', fps = 30, onProgress, onComplete }, ref) => {
+const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVideoEncoderProps>(({ directoryPath, filePattern = '.png', fps = 30, onProgress, onComplete, aspectRatio = 'square' }, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [status, setStatus] = useState('Ready');
   const [progress, setProgress] = useState(0);
@@ -136,6 +140,13 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
     }
   };
 
+  // Add dimensions based on aspect ratio
+  const dimensions = {
+    square: { width: 600, height: 600 },
+    landscape: { width: 800, height: 450 },
+    portrait: { width: 450, height: 800 }
+  };
+
   // Start encoding process
   const startEncoding = async () => {   
     await loadFilesFromDirectory();
@@ -155,13 +166,15 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
     addDebugMessage('Starting encoding process');
     
     try {
-      // Initialize the encoder first
+      // Initialize the encoder with aspect ratio dimensions
       webViewRef.current.postMessage(JSON.stringify({
         type: 'initEncoder',
         options: {
           framerate: fps,
           quality: 0.95,
-          totalFrames: fileUris.length
+          totalFrames: fileUris.length,
+          width: dimensions[aspectRatio].width,
+          height: dimensions[aspectRatio].height
         },
       }));
 

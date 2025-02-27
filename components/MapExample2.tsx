@@ -21,9 +21,10 @@ import Animated, {
 const dimension = {width: 300, height: 300};
 
 // Center coordinates
-const CENTER_LATITUDE = 37.78825;
-const CENTER_LONGITUDE = -122.4324;
+const CENTER_LATITUDE = 26.7690;
+const CENTER_LONGITUDE = -77.3031;
 const RADIUS = 0.005; // Size of the circle (in degrees)
+const BOUNCE_AMPLITUDE = 0.0005; // Adjust this value to control bounce height
 
 // Create a directory for storing frames
 const FRAMES_DIRECTORY = `${FileSystem.cacheDirectory}map_frames_reanimated/`;
@@ -98,21 +99,33 @@ const MapViewExample2 = () => {
     })();
   }, []);
 
+  const calculateCoordinates = useCallback((angle: number, includeVerticalBounce = false) => {
+    'worklet';
+    const radians = (angle * Math.PI) / 180;
+    
+    // Add vertical bounce using sine wave if requested
+    const verticalBounce = includeVerticalBounce 
+      ? Math.sin(angle * Math.PI / 22.5) * BOUNCE_AMPLITUDE 
+      : 0;
+    
+    return {
+      latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians) + verticalBounce,
+      longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians)
+    };
+  }, []);
+
   // Function to update trail points from the animated value
   const updateTrailPoints = useCallback((newAngle: number) => {
-    const radians = (newAngle * Math.PI) / 180;
-    const newPoint = {
-      latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
-      longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
-    };
-
+    const coordinate = calculateCoordinates(newAngle, true);    
     setTrailPoints((prev: {latitude: number, longitude: number}[]) => {
       if (newAngle === 0 || prev.length === 0) {
-        return [newPoint];
+        return [coordinate];
       }
-      return [...prev, newPoint];
+      return [...prev, coordinate];
     });
   }, []);
+   
+
 
   // Use animated reaction to update trail points when angle changes
   useAnimatedReaction(
@@ -127,12 +140,13 @@ const MapViewExample2 = () => {
 
   // Animated props for the marker
   const animatedMarkerProps = useAnimatedProps(() => {
-    const radians = (angle.value * Math.PI) / 180;
+    const coordinate = calculateCoordinates(angle.value, true);
+    
     return {
-      coordinate: {
-        latitude: CENTER_LATITUDE + RADIUS * Math.cos(radians),
-        longitude: CENTER_LONGITUDE + RADIUS * Math.sin(radians),
-      }
+      coordinate,
+      transform: [{
+        rotate: `${Math.sin(angle.value * Math.PI / 22.5) * 10}deg`
+      }]
     };
   });
 
@@ -185,6 +199,7 @@ const MapViewExample2 = () => {
     // Cancel any ongoing animation
     cancelAnimation(angle);
     setIsAnimating(false);
+    setTrailPoints([]);
     
     // Clear speed update interval
     if (speedIntervalRef.current) {
@@ -282,7 +297,7 @@ const MapViewExample2 = () => {
           <Polyline
             coordinates={trailPoints}
             strokeColor="#FF0000"
-            strokeWidth={2}
+            strokeWidth={4}
           />
           <AnimatedMarker            
             animatedProps={animatedMarkerProps}
@@ -292,7 +307,7 @@ const MapViewExample2 = () => {
               longitude: CENTER_LONGITUDE
             }}
           >
-            <Text style={{fontSize: 30}}>⛵</Text>
+            <Text style={{fontSize: 48}}>⛵</Text>
           </AnimatedMarker>
         </MapView>
         

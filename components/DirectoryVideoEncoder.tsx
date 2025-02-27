@@ -21,7 +21,7 @@ export type DirectoryVideoEncoderRef = {
   getProgress: () => number;
   getFileCount: () => number;
 };
-const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVideoEncoderProps>(({ directoryPath, filePattern = '.png', fps = 30 }, ref) => {
+const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVideoEncoderProps>(({ directoryPath, filePattern = '.png', fps = 50 }, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [status, setStatus] = useState('Ready');
   const [progress, setProgress] = useState(0);
@@ -169,6 +169,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
 
   // Start encoding process
   const startEncoding = async () => {
+    await loadFilesFromDirectory();
     if (fileUris.length === 0) {
       setStatus('No files loaded');
       return;

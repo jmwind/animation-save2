@@ -39,11 +39,11 @@ export default function TabLayout() {
           title: 'Explore',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
         }}
-      />
+      />  
       <Tabs.Screen
-        name="webview-video"
+        name="video"
         options={{
-          title: 'Webview Video',
+          title: 'Video',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="video.fill" color={color} />,
         }}
       />

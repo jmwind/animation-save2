@@ -71,7 +71,7 @@ const AnimatedMarker = Animated.createAnimatedComponent(Marker);
 // Speed Pill component
 const SpeedPill = ({ speed }: { speed: number }) => (
   <View style={styles.speedPillContainer}>
-    <Text style={styles.speedText}>{speed} knots</Text>
+    <Text style={styles.speedText}>{speed.toFixed(1)} knots</Text>
   </View>
 );
 
@@ -194,7 +194,7 @@ const MapViewExample2 = () => {
     // Add a small delay to ensure all frames are saved
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Create video
+    // Create video    
     await directoryVideoEncoderRef.current?.startEncoding();
     await directoryVideoEncoderRef.current?.shareVideo();    
   };
@@ -251,8 +251,7 @@ const MapViewExample2 = () => {
   }, [frames]);
 
   return (
-    <SafeAreaView>
-      <Text style={styles.title}>Reanimated Map Animation</Text>
+    <SafeAreaView style={{flex: 1}}>      
       <Button 
         title={isAnimating ? "Animation Running..." : isProcessing ? "Processing..." : "Start Animation"} 
         onPress={startAnimation}
@@ -296,30 +295,22 @@ const MapViewExample2 = () => {
             <Text style={{fontSize: 30}}>⛵</Text>
           </AnimatedMarker>
         </MapView>
-        <View style={styles.speedPillContainer}>
-          <SpeedPill speed={boatSpeed} />
-        </View>
-      </ViewShot>
-
-      <Text style={{color: 'black', marginTop: 10}}>Last 10 frames captured:</Text>
+        
+        <SpeedPill speed={boatSpeed} />        
+      </ViewShot>      
+      
       
       {isAnimating && frames.length > 0 && (
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={true}
-          contentContainerStyle={styles.framesContainer}>
-          {getLastTenFrames().map((frame, index) => (
-            <View key={index} style={styles.frameWrapper}>
-              <Image 
-                fadeDuration={0} 
-                source={frame} 
-                style={styles.frameImage} 
-              />
-              <Text style={styles.frameNumber}>{frames.length - getLastTenFrames().length + index + 1}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      )}      
+        <View style={styles.frameWrapper}>
+          <Image 
+            fadeDuration={0} 
+            source={frames[frames.length - 1]} 
+            style={styles.frameImage} 
+          />
+          <Text style={styles.frameNumber}>Frame: {frames.length}</Text>
+        </View>
+      )}        
+            
 
       <Button 
         title="Debug: Check Files" 
@@ -351,7 +342,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
   frameWrapper: {
-    marginHorizontal: 5,
+    margin: 8,
     alignItems: 'center',
   },
   speedPillContainer: {
@@ -378,6 +369,12 @@ const styles = StyleSheet.create({
   speedText: {
     fontSize: 12,
     color: '#666',
+  },
+  overlayContainer: {    
+    bottom: 10,    
+    zIndex: 1000,    
+    padding: 10,
+    borderRadius: 5,
   }
 });
 

@@ -199,11 +199,25 @@ const MapViewExample2 = () => {
   // Keep the existing animatedMarkerProps without camera logic
   const animatedMarkerProps = useAnimatedProps(() => {
     const coordinate = calculateCoordinates(angle.value, true);
+    
+    // Calculate heading based on angle of travel
+    // Since we're moving in a circle, the heading is tangent to the circle
+    // Add 90° to get the correct orientation (0° is North, 90° is East)
+    let heading = (angle.value + 90) % 360;
+    
+    // Determine if boat should face left or right
+    // When heading is between 0° and 180°, boat should face right
+    // When heading is between 180° and 360°, boat should face left
+    const shouldFaceLeft = heading < 180;
+    
     return {
       coordinate,
-      transform: [{
-        rotate: `${Math.sin(angle.value * Math.PI / 22.5) * 10}deg`
-      }]
+      transform: [
+        // Apply small bobbing rotation for wave effect
+        { rotate: `${Math.sin(angle.value * Math.PI / 22.5) * 5}deg` },
+        // Flip horizontally if heading indicates boat should face left
+        { scaleX: shouldFaceLeft ? -1 : 1 }
+      ]
     };
   });
 
@@ -236,7 +250,7 @@ const MapViewExample2 = () => {
     speedIntervalRef.current = setInterval(updateBoatSpeed, 1000);
 
     // Start Reanimated animation
-    // Animate from 0 to 360 degrees over 20 seconds
+    // Animate from 0 to 360 degrees over duration seconds
     angle.value = withTiming(360, {
       duration: VIDEO_DURATION,
       easing: Easing.linear,
@@ -253,6 +267,7 @@ const MapViewExample2 = () => {
   };
 
   const finishAnimation = async () => {
+    
     // Cancel any ongoing animation
     cancelAnimation(angle);
     setIsAnimating(false);
@@ -424,7 +439,15 @@ const MapViewExample2 = () => {
                 longitude: CENTER_LONGITUDE
               }}
             >
-              <Text style={{fontSize: boatSize}}>{selectedBoat}</Text>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[
+                  { fontSize: boatSize },
+                  // Center the transform origin
+                  { transform: [{ translateX: boatSize / 4 }] }
+                ]}>
+                  {selectedBoat}
+                </Text>
+              </View>
             </AnimatedMarker>
           </MapView>
           

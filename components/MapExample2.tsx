@@ -20,6 +20,7 @@ import Animated, {
 import * as Sharing from 'expo-sharing';
 import type { AspectRatio } from './DirectoryVideoEncoder';
 import Slider from '@react-native-community/slider';
+import { BlurView } from 'expo-blur';
 
 const dimension = {width: 300, height: 300};
 
@@ -405,6 +406,21 @@ const MapViewExample2 = () => {
     </View>
   );
 
+  // Update the progress display component
+  const ProgressDialog = ({ progress }: { progress: number }) => (
+    <View style={styles.progressOverlay}>
+      <BlurView intensity={20} style={StyleSheet.absoluteFill} />
+      <View style={styles.progressDialog}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.progressTitle}>Creating Video</Text>
+        <View style={styles.progressBarContainer}>
+          <View style={[styles.progressBar, { width: `${progress * 100}%` }]} />
+        </View>
+        <Text style={styles.progressText}>{Math.round(progress * 100)}%</Text>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>      
       <View style={styles.controlsContainer}>
@@ -474,12 +490,8 @@ const MapViewExample2 = () => {
           <Text style={styles.frameNumber}>Frame: {frames.length}</Text>
         </View>
       )}    
-      {isProcessing && (
-        <View style={{alignItems: 'center', marginVertical: 10, flexDirection: 'row', gap: 8}}>
-          <ActivityIndicator size="small" />
-          <Text>Creating video {progressPercentage}</Text>
-        </View>
-      )}                      
+      {isProcessing && <ProgressDialog progress={progress} />}
+      
       <DirectoryVideoEncoder 
         ref={directoryVideoEncoderRef} 
         directoryPath={FRAMES_DIRECTORY} 
@@ -638,6 +650,56 @@ const styles = StyleSheet.create({
       ios: 'Helvetica Neue',
       android: 'sans-serif-medium',
     }),
+  },
+  progressOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  progressDialog: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
+    padding: 24,
+    width: '80%',
+    maxWidth: 320,
+    alignItems: 'center',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  progressTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
+    marginTop: 8,
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#E5E5EA',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#007AFF',
+    borderRadius: 3,
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 4,
   },
 });
 

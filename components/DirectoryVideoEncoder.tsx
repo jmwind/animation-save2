@@ -3,63 +3,44 @@ import React, { useRef, useState, useEffect, forwardRef, useImperativeHandle } f
 import { View, Button, Text, Platform, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as FileSystem from 'expo-file-system';
-import * as MediaLibrary from 'expo-media-library';
-import * as Sharing from 'expo-sharing';
 
 export type DirectoryVideoEncoderProps = {
   directoryPath: string;
   filePattern?: string;
   fps?: number;
+  onProgress?: (progress: number) => void;
+  onComplete?: (videoUri: string) => void;
 };
 
 export type DirectoryVideoEncoderRef = {
   startEncoding: () => Promise<void>;  
-  getVideoUri: () => string | null;
-  shareVideo: () => Promise<void>;
-  getStatus: () => string;
-  getProgress: () => number;
-  getFileCount: () => number;
+  getVideoUri: () => string | null;  
 };
-const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVideoEncoderProps>(({ directoryPath, filePattern = '.png', fps = 50 }, ref) => {
+const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVideoEncoderProps>(({ directoryPath, filePattern = '.png', fps = 30, onProgress, onComplete }, ref) => {
   const webViewRef = useRef<WebView>(null);
   const [status, setStatus] = useState('Ready');
   const [progress, setProgress] = useState(0);
   const [videoUri, setVideoUri] = useState<string | null>(null);
-  const [fileUris, setFileUris] = useState<string[]>([]);
-  const [debugInfo, setDebugInfo] = useState<string[]>([]);
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [fileUris, setFileUris] = useState<string[]>([]);  
 
   // Expose methods to parent component via ref
   useImperativeHandle(ref, () => ({
     startEncoding: async () => await startEncoding(),    
-    getVideoUri: () => videoUri,
-    shareVideo: () => shareVideo(),
-    getStatus: () => status,
-    getProgress: () => progress,
-    getFileCount: () => fileUris.length
+    getVideoUri: () => videoUri,    
   }));
 
   const addDebugMessage = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    setDebugInfo(prev => [`[${timestamp}] ${message}`, ...prev.slice(0, 19)]); // Keep last 20 messages
+    const timestamp = new Date().toLocaleTimeString();    
     console.log(`[DEBUG] ${message}`);
   };
 
-  // Request permissions
   useEffect(() => {
-    (async () => {
-      const { status: mediaLibraryStatus } = await MediaLibrary.requestPermissionsAsync();
-      if (mediaLibraryStatus !== 'granted') {
-        setStatus('Media library permission denied');
-      }
-    })();
-  }, []);
+    onProgress?.(progress);
+  }, [progress]);
 
   // Load files from the specified directory
   const loadFilesFromDirectory = async () => {
-    try {
-      setIsLoading(true);
+    try {      
       setStatus('Loading files...');
       
       // Check if directory exists
@@ -83,7 +64,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
       
       if (filteredFiles.length === 0) {
         setStatus(`No ${filePattern} files found in directory`);
-        setIsLoading(false);
+        
         return;
       }
       
@@ -97,8 +78,6 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
       console.error('Error loading files:', error);
       setStatus(`Error: ${error}`);
       addDebugMessage(`Error loading files: ${error}`);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -136,7 +115,8 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
           });
           
           setVideoUri(fileName);
-          setStatus('Video ready');          
+          setStatus('Video ready');  
+          onComplete?.(fileName);
           break;
           
         case 'error':
@@ -231,29 +211,6 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
       
     } catch (error) {
       console.error('Error preparing images:', error);
-      setStatus(`Error: ${error}`);
-    }
-  };
-
-  // Share or save the video
-  const shareVideo = async () => {
-    if (!videoUri) {
-      setStatus('No video available');
-      return;
-    }
-
-    try {
-      if (Platform.OS === 'android') {
-        // On Android, save to media library
-        const asset = await MediaLibrary.createAssetAsync(videoUri);
-        await MediaLibrary.createAlbumAsync('DirectoryToMP4', asset, false);
-        setStatus('Video saved to gallery');
-      } else {
-        // On iOS, use sharing
-        await Sharing.shareAsync(videoUri);
-      }
-    } catch (error) {
-      console.error('Error sharing video:', error);
       setStatus(`Error: ${error}`);
     }
   };
@@ -617,24 +574,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
 </html>
   `;
 
-  return (
-    <>
-    <View style={styles.container}>                       
-      <View style={styles.controls}>                
-        <Text style={styles.status}>
-          Status: {status}
-          {progress > 0 && progress < 1 ? ` (${Math.round(progress * 100)}%)` : ''}
-        </Text>            
-        
-        {videoUri && (
-          <Button 
-            title="Save/Share Video" 
-            onPress={shareVideo} 
-            color="#28a745"
-          />
-        )}                
-      </View>            
-    </View>
+  return (   
      <WebView
      ref={webViewRef}
      originWhitelist={['*']}
@@ -644,8 +584,7 @@ const DirectoryVideoEncoder = forwardRef<DirectoryVideoEncoderRef, DirectoryVide
      domStorageEnabled={true}
      startInLoadingState={true}
      style={styles.webview}
-   />
-   </>
+   />   
   );
 });
 

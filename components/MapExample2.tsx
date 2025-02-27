@@ -1,5 +1,5 @@
-import React, {useState, useCallback, useEffect, useRef} from 'react';
-import {SafeAreaView, Image, Button, Alert, ActivityIndicator, View, ScrollView, StyleSheet} from 'react-native';
+import React, {useState, useCallback, useEffect, useRef, useMemo} from 'react';
+import {SafeAreaView, Image, Button, Alert, ActivityIndicator, View, ScrollView, StyleSheet, Platform} from 'react-native';
 import ViewShot from 'react-native-view-shot';
 import MapView, {Marker, Polyline} from 'react-native-maps';
 import { Text } from 'react-native';
@@ -17,6 +17,7 @@ import Animated, {
   cancelAnimation,
   useAnimatedReaction,
 } from 'react-native-reanimated';
+import * as Sharing from 'expo-sharing';
 
 const dimension = {width: 300, height: 300};
 
@@ -25,6 +26,7 @@ const CENTER_LATITUDE = 26.7690;
 const CENTER_LONGITUDE = -77.3031;
 const RADIUS = 0.005; // Size of the circle (in degrees)
 const BOUNCE_AMPLITUDE = 0.0005; // Adjust this value to control bounce height
+const VIDEO_DURATION = 15000; 
 
 // Create a directory for storing frames
 const FRAMES_DIRECTORY = `${FileSystem.cacheDirectory}map_frames_reanimated/`;
@@ -66,6 +68,7 @@ const MapViewExample2 = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [boatSpeed, setBoatSpeed] = useState(0);
+  const [progress, setProgress] = useState(0);
   const mapRef = useRef<MapView>(null);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const speedIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -73,6 +76,9 @@ const MapViewExample2 = () => {
   
   // Reanimated shared values
   const angle = useSharedValue(0);
+  const progressPercentage = useMemo(() => {
+    return progress > 0 && progress < 1 ? ` (${Math.round(progress * 100)}%)` : ''
+  }, [progress]);
   
   // Request permission on component mount
   useEffect(() => {
@@ -164,7 +170,7 @@ const MapViewExample2 = () => {
     // Start Reanimated animation
     // Animate from 0 to 360 degrees over 20 seconds
     angle.value = withTiming(360, {
-      duration: 15000,
+      duration: VIDEO_DURATION,
       easing: Easing.linear,
     }, (finished) => {
       if (finished) {
@@ -175,7 +181,7 @@ const MapViewExample2 = () => {
     // Backup timeout to ensure animation stops
     animationTimeoutRef.current = setTimeout(async () => {
       finishAnimation();
-    }, 16000); // Slightly longer than animation duration
+    }, VIDEO_DURATION + 1000); // Slightly longer than animation duration
   };
 
   const finishAnimation = async () => {
@@ -193,7 +199,14 @@ const MapViewExample2 = () => {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     // Create video    
-    await directoryVideoEncoderRef.current?.startEncoding();    
+    setIsProcessing(true);
+    try {
+      await directoryVideoEncoderRef.current?.startEncoding();         
+    } catch (error) {
+      Alert.alert('Error creating video', (error as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Cleanup on unmount
@@ -204,6 +217,26 @@ const MapViewExample2 = () => {
       cancelAnimation(angle);
     };
   }, []);
+
+
+  // Share or save the video
+  const shareVideo = async (videoUri: string) => {
+    if (!videoUri) {    
+      return;
+    }
+
+    try {
+      if (Platform.OS === 'android') {        
+        const asset = await MediaLibrary.createAssetAsync(videoUri);
+        await MediaLibrary.createAlbumAsync('DirectoryToMP4', asset, false);
+        Alert.alert('Video saved to gallery');
+      } else {        
+        await Sharing.shareAsync(videoUri);
+      }
+    } catch (error) {
+      console.error('Error sharing video:', error);      
+    }
+  };
 
   const onCapture = useCallback(async (uri: string) => {
     if (uri && isAnimating) {
@@ -239,17 +272,10 @@ const MapViewExample2 = () => {
   return (
     <SafeAreaView style={{flex: 1, gap: 16}}>      
       <Button 
-        title={isAnimating ? "Animation Running..." : isProcessing ? "Processing..." : "Start Animation"} 
+        title={isAnimating || isProcessing ? "Animation Running..." : "Start Animation"} 
         onPress={startAnimation}
         disabled={isAnimating || isProcessing}
-      />
-      
-      {isProcessing && (
-        <View style={{alignItems: 'center', marginVertical: 10}}>
-          <ActivityIndicator size="large" color="#0000ff" />
-          <Text style={{color: 'white'}}>Creating video from {frames.length} frames...</Text>
-        </View>
-      )}
+      />            
       
       <ViewShot
         onCapture={onCapture}
@@ -268,7 +294,7 @@ const MapViewExample2 = () => {
           <Polyline
             coordinates={trailPoints}
             strokeColor="#FF0000"
-            strokeWidth={4}
+            strokeWidth={5}
           />
           <AnimatedMarker            
             animatedProps={animatedMarkerProps}
@@ -278,7 +304,7 @@ const MapViewExample2 = () => {
               longitude: CENTER_LONGITUDE
             }}
           >
-            <Text style={{fontSize: 48}}>⛵</Text>
+            <Text style={{fontSize: 64}}>⛵</Text>
           </AnimatedMarker>
         </MapView>
         
@@ -295,8 +321,21 @@ const MapViewExample2 = () => {
           />
           <Text style={styles.frameNumber}>Frame: {frames.length}</Text>
         </View>
-      )}                          
-      <DirectoryVideoEncoder ref={directoryVideoEncoderRef} directoryPath={FRAMES_DIRECTORY} filePattern=".png" fps={30} />
+      )}    
+      {isProcessing && (
+        <View style={{alignItems: 'center', marginVertical: 10, flexDirection: 'row', gap: 8}}>
+          <ActivityIndicator size="small" />
+          <Text>Creating video {progressPercentage}</Text>
+        </View>
+      )}                      
+      <DirectoryVideoEncoder 
+        ref={directoryVideoEncoderRef} 
+        directoryPath={FRAMES_DIRECTORY} 
+        filePattern=".png" 
+        fps={30} 
+        onProgress={setProgress} 
+        onComplete={shareVideo}
+      />
     </SafeAreaView>
   );
 };
